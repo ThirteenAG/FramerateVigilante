@@ -30,9 +30,11 @@ public:
 		int _isOnFlagsInt;
 		struct {
 			unsigned int poolGame : 1;
-			unsigned int drivingSchool : 1;
-			unsigned int boatSchool : 1;
-			unsigned int bikeSchool : 1;
+			unsigned int sexGame : 1;
+			// Limit for schools are not needed anymore? I got gold on all challenges with 60 FPS, but still need to improve the drifting physics
+			//unsigned int drivingSchool : 1;
+			//unsigned int boatSchool : 1;
+			//unsigned int bikeSchool : 1;
 		} _isOnFlags;
 	};
 
@@ -90,9 +92,9 @@ public:
 
 			if (_refreshRate > 0 && _refreshRate != 60) {
 			#if defined(GTASA)
-				//WriteMemory<uint8_t>(0x74612A + 2, _refreshRate); //min hz
+				WriteMemory<uint8_t>(0x74612A + 2, _refreshRate); //min hz
 				//patch::RedirectCall(0x74631E, PatchedSetRefreshRate);
-				RwD3D9EngineSetRefreshRate(_refreshRate);
+				//RwD3D9EngineSetRefreshRate(_refreshRate);
 			#endif
 			#if defined(GTAVC)
 				//WriteMemory<uint8_t>(0x60105B + 2, _refreshRate); //min hz
@@ -247,6 +249,20 @@ public:
 		#if defined(GTAVC)
 			MakeInline<MagicTimeStepFMUL>(0x5BA952, 0x5BA952 + 6);
 		#endif defined(GTAVC)
+
+
+			// Burnout
+		#if defined(GTASA)
+			struct BurnoutFix
+			{
+				void operator()(reg_pack& regs)
+				{
+					float f = 3000.0f * (CTimer::ms_fTimeStep / magic);
+					asm_fld(f);
+				}
+			};
+			MakeInline<BurnoutFix>(0x6A4FE6, 0x6A4FE6 + 6);
+		#endif defined(GTASA)
 
 
 			struct CarSlowDownSpeedFix
@@ -433,46 +449,49 @@ public:
 			}; MakeInline<PedPushCarForce>(0x549652, 0x549652 + 8);
 		#endif
 
+		#if defined(GTASA)
+			if (_autoLimitFPS) {
+				Events::processScriptsEvent += []() {
+
+					// Consider submissions/minigames
+					framerateVigilante._isOnFlagsInt = 0; //reset
+					CRunningScript** activeThreadQueue = (CRunningScript**)ReadMemory<CRunningScript*>(0x468D76, true); //make sure is using updated pointer, compatibility for limit adjusters
+					for (auto script = *activeThreadQueue; script; script = script->m_pNext)
+					{
+						if (_stricmp("POOL2", script->m_szName) == 0) {
+							framerateVigilante._isOnFlags.poolGame = true;
+						}
+						if (_stricmp("GFSEX", script->m_szName) == 0) {
+							framerateVigilante._isOnFlags.sexGame = true;
+						}
+						/*else if (_stricmp("DSKOOL", script->m_szName) == 0) {
+							framerateVigilante._isOnFlags.drivingSchool = true;
+						}
+						else if (_stricmp("BOAT", script->m_szName) == 0) {
+							framerateVigilante._isOnFlags.boatSchool = true;
+						}
+						else if (_stricmp("BSKOOL", script->m_szName) == 0) {
+							framerateVigilante._isOnFlags.bikeSchool = true;
+						}*/
+					}
+					if (framerateVigilante._isOnFlagsInt != 0) {
+						if (_lastFpsLimit == 0) {
+							_lastFpsLimit = ReadMemory<uint8_t>(0xC1704C, false);
+						}
+						WriteMemory<uint8_t>(0xC1704C, 30, false);
+					}
+					else {
+						if (_lastFpsLimit != 0) {
+							WriteMemory<uint8_t>(0xC1704C, _lastFpsLimit, false);
+							_lastFpsLimit = 0;
+						}
+					}
+
+				}; //end of processScriptsEvent
+			}
+		#endif
+
 		}; //end of init
-
-	#if defined(GTASA)
-		if (_autoLimitFPS) {
-			Events::processScriptsEvent += []() {
-
-				// Consider submissions/minigames
-				framerateVigilante._isOnFlagsInt = 0; //reset
-				CRunningScript** activeThreadQueue = (CRunningScript**)0x00A8B42C;
-				for (auto script = *activeThreadQueue; script; script = script->m_pNext)
-				{
-					if (_stricmp("POOL2", script->m_szName) == 0) {
-						framerateVigilante._isOnFlags.poolGame = true;
-					}
-					else if (_stricmp("DSKOOL", script->m_szName) == 0) {
-						framerateVigilante._isOnFlags.drivingSchool = true;
-					}
-					else if (_stricmp("BOAT", script->m_szName) == 0) {
-						framerateVigilante._isOnFlags.boatSchool = true;
-					}
-					else if (_stricmp("BSKOOL", script->m_szName) == 0) {
-						framerateVigilante._isOnFlags.bikeSchool = true;
-					}
-				}
-				if (framerateVigilante._isOnFlagsInt != 0) {
-					if (_lastFpsLimit == 0) {
-						_lastFpsLimit = ReadMemory<uint8_t>(0xC1704C, false);
-					}
-					WriteMemory<uint8_t>(0xC1704C, 30, false);
-				}
-				else {
-					if (_lastFpsLimit != 0) {
-						WriteMemory<uint8_t>(0xC1704C, _lastFpsLimit, false);
-						_lastFpsLimit = 0;
-					}
-				}
-
-			}; //end of processScriptsEvent
-		}
-	#endif
 
 	}
 } framerateVigilante;
